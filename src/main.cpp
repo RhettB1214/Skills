@@ -1,20 +1,162 @@
 #include "main.h"
+#include "lemlib/api.hpp"
+#include "definitions.hpp"
 
-/**
- * A callback function for LLEMU's center button.
- *
- * When this callback is fired, it will toggle line 2 of the LCD text between
- * "I was pressed!" and nothing.
- */
-void on_center_button() {
-	static bool pressed = false;
-	pressed = !pressed;
-	if (pressed) {
-		pros::lcd::set_text(2, "I was pressed!");
-	} else {
-		pros::lcd::clear_line(2);
-	}
-}
+
+
+
+
+/*ASSET Defintions*/
+
+	/*Skills*/
+	ASSET(skills1_txt);
+	ASSET(skills2_txt);
+
+
+/*End of ASSET Defintions*/
+
+/*Variable Definitions*/
+
+    /*Controller Variables*/
+    bool lastKnownButtonR1State;
+	bool lastKnownButtonBState;
+	bool lastKnownButtonYState;
+	bool lastKnownButtonRightState;
+	bool lastKnownButtonDownState;
+	bool wingToggle = false;
+	bool blockerToggle = false;
+	bool hangToggle = false;
+
+	/*Kicker Variables*/
+	bool slapperFireToggle = true;
+	bool kickerSet = false;
+
+
+
+
+/*End of Variable Definitions*/
+
+
+/*Device Initilization*/
+
+	/*Drivetrain Initilizations*/
+
+	pros::Motor lD1(LD1, SPEEDBOX, true);
+	pros::Motor lD2(LD2, SPEEDBOX, true);
+	pros::Motor lD3(LD3, SPEEDBOX, true);
+	pros::Motor rD1(RD1, SPEEDBOX, false);
+	pros::Motor rD2(RD2, SPEEDBOX, false);
+	pros::Motor rD3(RD3, SPEEDBOX, false);
+
+	pros::MotorGroup lDrive({lD1, lD2, lD3});
+	pros::MotorGroup rDrive({rD1, rD2, rD3});
+
+	pros::Imu imu(IMU_PORT);
+
+	pros::Rotation odomRot(ODOM_ROT, false);
+
+	lemlib::TrackingWheel odomWheel(&odomRot, 2.75, 0, 1);
+
+	/*End of Drivetrain Initializations*/
+
+
+	/*Non-DT Initializations*/
+
+	pros::Motor slapperMotor(SLAP_PORT, TORQUEBOX, true, pros::E_MOTOR_ENCODER_DEGREES);
+	pros::Motor intakeMotor(INTAKE_PORT, SPEEDBOX, false);
+
+	pros::Distance kickerDistance(DISTANCE_PORT);
+
+	pros::ADIDigitalOut vertWingPnuem(VERTW_ADIDO);
+	pros::ADIDigitalOut horiWingPnuem(HORIW_ADIDO);
+	pros::ADIDigitalOut blockerPnuem(BLOCKER_ADIDO);
+	pros::ADIDigitalOut hangPnuem(HANG_ADIDO);
+
+
+
+	/*End of Non-DT Initializations*/
+
+	/*Controller Initialization*/
+
+	pros::Controller master(pros::E_CONTROLLER_MASTER);
+
+	/*End of Controller Initilization*/
+
+
+/*End of Device Initilization*/
+
+
+/*LemLib Chassis Initializations*/
+
+	/*LemLib Drivetrain Initilization*/
+	lemlib::Drivetrain drivetrain
+	{
+		&lDrive, /*Pointer to the left drive channel*/
+		&rDrive, /*Pointer to the right drive channel*/
+		10.5, /*Track Width*/
+		3.25, /*Wheel Diameter*/
+		450, /*Wheel RPM*/
+		8 /*Chase Power*/
+	};
+	/*End of LemLib Drivetrain Initilization*/
+
+
+	/*LemLib Odometry Initilization*/
+	lemlib::OdomSensors odomSensors
+	{
+		&odomWheel, /*Center Wheel*/
+		nullptr, /*No Tracking Wheel*/
+		nullptr, /*No Tracking Wheel*/
+		nullptr, /*No Tracking Wheel*/
+		&imu /*Inertial Sensor*/
+	};
+	/*End of LemLib Odometery Sensors Initilization*/
+
+
+	/*Lateral (Forwards/Backwards) PID Initilization*/
+	lemlib::ControllerSettings lateralController
+	(
+		8,  //16, // kP
+        0, //3 // kI
+		32, //80, // kD
+        0, //4 // Windup Range
+		1, // smallErrorRange
+		100, // smallErrorTimeout
+		3, // largeErrorRange
+		500, // largeErrorTimeout
+		10 // Slew Rate
+    );
+	/*End of Lateral (Forwards/Backwards) PID Initilization*/
+
+
+	/*Angular (Turning) PID Initilization*/
+	lemlib::ControllerSettings angularController(
+		4,  //7 // kP
+        0, // kI
+		40, //60 // kD
+        0, // Windup Range
+		1, // smallErrorRange
+		100, // smallErrorTimeout
+		3, // largeErrorRange
+		500, // largeErrorTimeout
+		10 // Slew Rate
+    );
+	/*End of Angular (Turning) PID Initilization*/
+
+
+	/*LemLib Chassis Initilization*/
+	lemlib::Chassis drive(drivetrain, lateralController, angularController, odomSensors);
+	/*End of LemLib Chassis Initilization*/
+
+
+/*End of LemLib Chassis Initializations*/
+
+
+
+
+
+
+
 
 /**
  * Runs initialization code. This occurs as soon as the program is started.
@@ -22,11 +164,11 @@ void on_center_button() {
  * All other competition modes are blocked by initialize; it is recommended
  * to keep execution time for this mode under a few seconds.
  */
-void initialize() {
-	pros::lcd::initialize();
-	pros::lcd::set_text(1, "Hello PROS User!");
-
-	pros::lcd::register_btn1_cb(on_center_button);
+void initialize() 
+{
+	drive.calibrate();
+	intakeMotor.set_brake_mode(HOLD);
+	slapperMotor.set_brake_mode(COAST);	
 }
 
 /**
@@ -58,7 +200,35 @@ void competition_initialize() {}
  * will be stopped. Re-enabling the robot will restart the task, not re-start it
  * from where it left off.
  */
-void autonomous() {}
+void autonomous() 
+{
+	lDrive.set_brake_modes(HOLD);
+	rDrive.set_brake_modes(HOLD);
+
+	drive.setPose(-44, -56, 135);
+
+	drive.follow(skills1_txt, 15, 2000, false);
+	//drive.moveToPoint(poseX, poseY - 8, 500);
+	//drive.moveToPoint(poseX, poseY + 10, 500, {.forwards = false, .minSpeed = 127});
+	drive.moveToPoint(-62, -39, 500);
+	drive.turnTo(62, -5, 1000, {.forwards = false});
+	drive.waitUntilDone();
+	/*horiWings Out Here*/
+	/*wait while Shooting Here*/
+	/*horiWings In Here*/
+	drive.moveToPoint(-31, -59, 1000, {.forwards = false});
+	drive.moveToPoint(31, -59, 2000, {.forwards = false});
+	drive.follow(skills2_txt, 15, 2000, false);
+	vertWingPnuem.set_value(1);
+	drive.waitUntil(26);
+	vertWingPnuem.set_value(0);
+	
+
+
+	
+	
+	
+}
 
 /**
  * Runs the operator control code. This function will be started in its own task
@@ -73,21 +243,127 @@ void autonomous() {}
  * operator control task will be stopped. Re-enabling the robot will restart the
  * task, not resume it from where it left off.
  */
-void opcontrol() {
-	pros::Controller master(pros::E_CONTROLLER_MASTER);
-	pros::Motor left_mtr(1);
-	pros::Motor right_mtr(2);
+void opcontrol() 
+{
+	lDrive.set_brake_modes(COAST);
+	rDrive.set_brake_modes(COAST);
 
-	while (true) {
-		pros::lcd::print(0, "%d %d %d", (pros::lcd::read_buttons() & LCD_BTN_LEFT) >> 2,
-		                 (pros::lcd::read_buttons() & LCD_BTN_CENTER) >> 1,
-		                 (pros::lcd::read_buttons() & LCD_BTN_RIGHT) >> 0);
-		int left = master.get_analog(ANALOG_LEFT_Y);
-		int right = master.get_analog(ANALOG_RIGHT_Y);
+	pros::Task task([]()
+	{
+		while(true)
+		{
+			while(slapperFireToggle)
+			{
+				if (kickerDistance.get() <= 5 || slapperMotor.get_position() <= 85)
+				{
+					slapperMotor.move(127);
+				}
+				else
+				{
+					pros::delay(100);
+					slapperMotor.move(0);
+				}
+				pros::delay(10);
+			}
+			pros::delay(10);
+		}
+	});
+	
+	while(true)
+	{
+		
+		std::cout << "Distance: " << kickerDistance.get() << " Motor Position: " << slapperMotor.get_position() << std::endl;
 
-		left_mtr = left;
-		right_mtr = right;
+		drive.tank(masterLeftY, masterRightY, 5);
 
-		pros::delay(20);
+		
+
+
+		if (masterL1)
+		{
+			intakeMotor.move(-127);
+		}
+		else if (masterL2) 
+		{
+			intakeMotor.move(127);
+		}
+		else
+		{
+			intakeMotor.move(0);
+		}
+
+
+		if (masterR1 != lastKnownButtonR1State)
+		{
+			lastKnownButtonR1State = masterR1;
+			if (masterR1)
+			{
+				slapperFireToggle = !slapperFireToggle;
+			}
+		}
+
+		
+
+		if (masterR2)
+		{
+			horiWingPnuem.set_value(1);
+		}
+		else
+		{
+			horiWingPnuem.set_value(0);
+		}
+
+		// Vertical Wing Pneumatics Toggle
+		if(masterY != lastKnownButtonYState)
+		{
+			lastKnownButtonYState = masterY;
+			if(masterY)
+			{
+				wingToggle = !wingToggle;
+				vertWingPnuem.set_value(wingToggle);
+			}
+		}
+
+
+		if(masterRight != lastKnownButtonRightState)
+		{
+			lastKnownButtonRightState = masterRight;
+			if(masterRight)
+			{
+				blockerToggle = !blockerToggle;
+				slapperFireToggle = !slapperFireToggle;
+				blockerPnuem.set_value(blockerToggle);
+			}
+		}
+
+		if(masterDown != lastKnownButtonDownState)
+		{
+			lastKnownButtonDownState = masterDown;
+			if(masterDown && blockerToggle == false)
+			{
+				blockerToggle = !blockerToggle;
+				slapperFireToggle = !slapperFireToggle;
+				blockerPnuem.set_value(blockerToggle);
+			}
+			else if(masterDown && blockerToggle == true)
+			{
+				hangToggle = !hangToggle;
+				hangPnuem.set_value(hangToggle);
+				blockerToggle = !blockerToggle;
+				blockerPnuem.set_value(blockerToggle);
+				
+			}
+			
+		}
+
+
+
+		
+
+
+
+
+
 	}
+	
 }
